@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Vision Guided Gating System</title>
+  <link rel="stylesheet" href="main.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="main.js" defer></script>
+  <script defer>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (typeof particlesJS !== 'undefined') {
+        particlesJS('particles-js', {
+          particles: {
+            number: { value: 80, density: { enable: true, value_area: 800 } },
+            color: { value: '#00c8ff' },
+            shape: { type: 'circle' },
+            opacity: { value: 0.5 },
+            size: { value: 3, random: true },
+            line_linked: {
+              enable: true,
+              distance: 150,
+              color: '#00c8ff',
+              opacity: 0.4,
+              width: 1
+            },
+            move: {
+              enable: true,
+              speed: 6,
+              direction: 'none',
+              random: false,
+              straight: false,
+              out_mode: 'out',
+              bounce: false
+            }
+          },
+          interactivity: {
+            detect_on: 'canvas',
+            events: {
+              onhover: { enable: true, mode: 'repulse' },
+              onclick: { enable: true, mode: 'push' },
+              resize: true
+            }
+          },
+          retina_detect: true
+        });
+      }
+      
+      // Enhanced tab functionality
+      const tabs = document.querySelectorAll(".tab-btn");
+      const sections = document.querySelectorAll(".tab-panel");
+      
+      tabs.forEach(btn => {
+        btn.addEventListener("click", () => {
+          tabs.forEach(b => b.classList.remove("active"));
+          sections.forEach(s => s.classList.remove("active"));
+          btn.classList.add("active");
+          
+          const targetTab = btn.dataset.tab;
+          const targetPanel = document.getElementById(targetTab);
+          if (targetPanel) {
+            targetPanel.classList.add("active");
+          }
+          
+          // Special handling for analyze (zones) tab
+          if (targetTab === 'analyze') {
+            console.log('🎯 Switching to zones tab...');
+            // Trigger zone initialization after a small delay
+            setTimeout(() => {
+              if (typeof initZoneDrawing === 'function') {
+                initZoneDrawing();
+              }
+            }, 100);
+          }
+        });
+      });
+
+      // File upload functionality
+      const uploadZone = document.getElementById('uploadZone');
+      const videoInput = document.getElementById('videoInput');
+      const uploadProgress = document.getElementById('uploadProgress');
+      const videoPreview = document.getElementById('videoPreview');
+
+      uploadZone.addEventListener('click', () => {
+        videoInput.click();
+      });
+
+      uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+      });
+
+      uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+      });
+
+      uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          handleFileUpload(files[0]);
+        }
+      });
+
+      videoInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileUpload(e.target.files[0]);
+        }
+      });
+
+      function handleFileUpload(file) {
+        // Show progress
+        uploadZone.classList.add('hidden');
+        uploadProgress.classList.remove('hidden');
+        
+        // Simulate upload progress
+        let progress = 0;
+        const progressFill = document.getElementById('progressFill');
+        const progressPercentage = document.getElementById('progressPercentage');
+        
+        const interval = setInterval(() => {
+          progress += Math.random() * 15;
+          if (progress > 100) progress = 100;
+          
+          progressFill.style.width = progress + '%';
+          progressPercentage.textContent = Math.round(progress) + '%';
+          
+          if (progress >= 100) {
+            clearInterval(interval);
+            setTimeout(() => {
+              uploadProgress.classList.add('hidden');
+              showVideoPreview(file);
+            }, 500);
+          }
+        }, 200);
+      }
+
+      function showVideoPreview(file) {
+        videoPreview.classList.remove('hidden');
+        
+        // Create video element to extract first frame
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        
+        video.addEventListener('loadeddata', () => {
+          // Create canvas to capture first frame
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          
+          // Set baseline frame
+          const baselineFrame = document.getElementById('baselineFrame');
+          baselineFrame.src = canvas.toDataURL();
+          
+          // Update video info
+          document.getElementById('videoName').textContent = file.name;
+          document.getElementById('videoDuration').textContent = formatDuration(video.duration);
+          document.getElementById('videoResolution').textContent = `${video.videoWidth}x${video.videoHeight}`;
+          document.getElementById('videoFps').textContent = '30 FPS'; // Estimated
+          
+          URL.revokeObjectURL(video.src);
+        });
+      }
+
+      function formatDuration(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = Math.floor(seconds % 60);
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+      }
+
+      // Range input updates
+      document.getElementById('motionThreshold').addEventListener('input', (e) => {
+        document.getElementById('thresholdValue').textContent = e.target.value;
+      });
+
+      document.getElementById('minArea').addEventListener('input', (e) => {
+        document.getElementById('areaValue').textContent = e.target.value;
+      });
+
+      document.getElementById('motionFrames').addEventListener('input', (e) => {
+        document.getElementById('framesValue').textContent = e.target.value;
+      });
+
+      // Beam control functionality
+      const startMonitoringBtn = document.getElementById('startMonitoringBtn');
+      const stopMonitoringBtn = document.getElementById('stopMonitoringBtn');
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+
+      startMonitoringBtn.addEventListener('click', () => {
+        startMonitoringBtn.style.display = 'none';
+        stopMonitoringBtn.style.display = 'inline-flex';
+        statusDot.classList.add('active');
+        statusText.textContent = 'ACTIVE';
+        statusText.classList.add('active');
+        
+        // Update status values
+        document.getElementById('detectionStatus').textContent = 'Yes';
+        document.getElementById('beamActiveStatus').textContent = 'Yes';
+        document.getElementById('lastEventTime').textContent = new Date().toLocaleTimeString();
+        
+        addEvent('Monitoring started', 'success');
+      });
+
+      stopMonitoringBtn.addEventListener('click', () => {
+        stopMonitoringBtn.style.display = 'none';
+        startMonitoringBtn.style.display = 'inline-flex';
+        statusDot.classList.remove('active');
+        statusText.textContent = 'STOPPED';
+        statusText.classList.remove('active');
+        
+        // Update status values
+        document.getElementById('detectionStatus').textContent = 'No';
+        document.getElementById('beamActiveStatus').textContent = 'No';
+        
+        addEvent('Monitoring stopped', 'info');
+      });
+
+      // Emergency stop
+      document.getElementById('emergencyStopBtn').addEventListener('click', () => {
+        stopMonitoringBtn.style.display = 'none';
+        startMonitoringBtn.style.display = 'inline-flex';
+        statusDot.classList.remove('active');
+        statusText.textContent = 'EMERGENCY STOP';
+        statusText.classList.remove('active');
+        
+        // Update status values
+        document.getElementById('detectionStatus').textContent = 'No';
+        document.getElementById('beamActiveStatus').textContent = 'No';
+        
+        addEvent('Emergency stop activated', 'error');
+      });
+
+      function addEvent(message, type = 'info') {
+        const eventsList = document.getElementById('eventsList');
+        const noEvents = eventsList.querySelector('.no-events');
+        
+        if (noEvents) {
+          eventsList.innerHTML = '';
+        }
+        
+        const eventItem = document.createElement('div');
+        eventItem.className = `event-item ${type}`;
+        eventItem.innerHTML = `
+          <div>
+            <span>${message}</span>
+            <small>${new Date().toLocaleTimeString()}</small>
+          </div>
+        `;
+        
+        eventsList.insertBefore(eventItem, eventsList.firstChild);
+      }
+
+      // Clear events
+      document.getElementById('clearEventsBtn').addEventListener('click', () => {
+        document.getElementById('eventsList').innerHTML = '<div class="no-events">No events recorded</div>';
+      });
+
+      // Upload new video
+      document.getElementById('uploadNewBtn').addEventListener('click', () => {
+        videoPreview.classList.add('hidden');
+        uploadZone.classList.remove('hidden');
+      });
+
+      // Confirm baseline
+      document.getElementById('confirmBaselineBtn').addEventListener('click', () => {
+        // Switch to zones tab
+        document.querySelector('[data-tab="analyze"]').click();
+        addEvent('Baseline confirmed successfully', 'success');
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="app-container">
+    <nav class="navbar">
+      <div class="nav-container">
+        <div class="logo">
+          <i class="fas fa-crosshairs"></i>
+          Vision-Guided <span class="highlight">Gating System</span>
+        </div>
+        <div class="nav-links">
+          <a href="index.html" class="nav-link">Home</a>
+          <a href="patent.html" class="nav-link">Patent</a>
+          <a href="features.html" class="nav-link">Features</a>
+          <a href="tech.html" class="nav-link">Technology</a>
+          <a href="safety.html" class="nav-link">Safety</a>
+          
+        </div>
+        <div class="nav-actions">
+          <a href="index.html" class="btn btn-outline">Back to Home</a>
+        </div>
+        <div class="mobile-menu-btn">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </nav>
+
+    <section class="pipeline-section">
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="upload">
+          <i class="fas fa-upload"></i>
+          Establish Baseline
+        </button>
+        <button class="tab-btn" data-tab="analyze">
+          <i class="fas fa-crosshairs"></i>
+          Configure Zones
+        </button>
+        <button class="tab-btn" data-tab="control">
+          <i class="fas fa-radiation"></i>
+          Control Radiation
+        </button>
+      </div>
+
+      <!-- Upload Tab -->
+      <div class="tab-panel active" id="upload">
+        <div class="baseline-container">
+          <div class="step-card">
+            <h2>Upload <span class="highlight">Test Video</span></h2>
+            <p>Begin by uploading your baseline video for patient positioning reference</p>
+          </div>
+          
+          <div class="upload-zone" id="uploadZone">
+            <div class="upload-content">
+              <div class="upload-icon">
+                <i class="fas fa-cloud-upload-alt"></i>
+              </div>
+              <h3>Upload Video File</h3>
+              <p>Drag and drop your video file here or click to browse</p>
+              <p class="upload-limit">Supported formats: MP4, AVI, MOV (Max: 100MB)</p>
+            </div>
+            <input type="file" id="videoInput" accept="video/*" style="display: none;">
+          </div>
+
+          <div class="upload-progress hidden" id="uploadProgress">
+            <div class="progress-info">
+              <span id="progressStatus">Uploading...</span>
+              <span id="progressPercentage">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="upload-spinner">
+              <div class="spinner"></div>
+              <span>Processing video...</span>
+            </div>
+          </div>
+
+          <div class="video-preview hidden" id="videoPreview">
+            <h3>Baseline Frame Preview</h3>
+            <div class="baseline-frame-container">
+              <div class="frame-display">
+                <img id="baselineFrame" class="baseline-image" alt="First frame of uploaded video">
+              </div>
+              <div class="baseline-info">
+                <div class="info-item">
+                  <span class="info-label">File Name:</span>
+                  <span class="info-value" id="videoName">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Duration:</span>
+                  <span class="info-value" id="videoDuration">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Resolution:</span>
+                  <span class="info-value" id="videoResolution">-</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Frame Rate:</span>
+                  <span class="info-value" id="videoFps">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="baseline-actions">
+              <button class="btn btn-outline" id="uploadNewBtn">
+                <i class="fas fa-upload"></i>
+                Upload New Video
+              </button>
+              <button class="btn btn-primary" id="confirmBaselineBtn">
+                <i class="fas fa-check"></i>
+                Confirm Baseline
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Configure Zones Tab -->
+      <div class="tab-panel" id="analyze">
+        <div class="zones-container">
+          <div class="zones-header">
+            <h2>Setup <span class="highlight">Detection Zones</span></h2>
+            <p>Define motion detection zones on your baseline frame</p>
+          </div>
+
+          <div class="canvas-section">
+            <div class="canvas-controls">
+              <div class="drawing-controls">
+                <button class="btn btn-primary" id="startDrawingBtn">
+                  <i class="fas fa-pencil-alt"></i>
+                  Start Drawing Zone
+                </button>
+                <button class="btn btn-outline" id="clearPointsBtn">
+                  <i class="fas fa-eraser"></i>
+                  Clear Points
+                </button>
+                <button class="btn btn-outline" id="undoPointBtn">
+                  <i class="fas fa-undo"></i>
+                  Undo Last Point
+                </button>
+              </div>
+              <div class="drawing-status" id="drawingStatusContainer">
+                <span id="drawingStatus">Click "Start Drawing" to begin</span>
+                <span class="range-value" id="pointsCount">Points: 0</span>
+              </div>
+            </div>
+
+            <div class="canvas-container">
+              <canvas id="zoneCanvas" class="zone-canvas"></canvas>
+              <div class="canvas-overlay" id="canvasOverlay">
+                <div class="drawing-instructions">
+                  <i class="fas fa-mouse-pointer"></i>
+                  <p>Click on the image to add zone boundary points</p>
+                  <p><strong>Tip:</strong> You need at least 3 points to create a zone</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="zone-config-form" id="zoneConfigForm">
+            <div class="form-header">
+              <h3>Configure Zone Parameters</h3>
+              <p>Set detection parameters for your new zone</p>
+            </div>
+            <form id="zoneForm">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="zoneName">Zone Name</label>
+                  <input type="text" id="zoneName" placeholder="e.g., critical, lung, heart" required>
+                </div>
+                <div class="form-group">
+                  <label for="zonePriority">Priority Level</label>
+                  <select id="zonePriority">
+                    <option value="1">1 - Critical (Highest)</option>
+                    <option value="2">2 - High</option>
+                    <option value="3" selected>3 - Medium</option>
+                    <option value="4">4 - Low</option>
+                    <option value="5">5 - Monitoring Only</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="motionThreshold">Motion Threshold</label>
+                  <div style="display: flex; align-items: center;">
+                    <input type="range" id="motionThreshold" min="10" max="100" value="50" style="flex: 1;">
+                    <span class="range-value" id="thresholdValue">50</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="minArea">Minimum Area (pixels)</label>
+                  <div style="display: flex; align-items: center;">
+                    <input type="range" id="minArea" min="50" max="1000" value="100" step="25" style="flex: 1;">
+                    <span class="range-value" id="areaValue">100</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="motionFrames">Motion Frames</label>
+                  <div style="display: flex; align-items: center;">
+                    <input type="range" id="motionFrames" min="1" max="10" value="3" style="flex: 1;">
+                    <span class="range-value" id="framesValue">3</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="zoneColor">Zone Color</label>
+                  <select id="zoneColor">
+                    <option value="#FF0000">Red</option>
+                    <option value="#FF8000">Orange</option>
+                    <option value="#FFFF00">Yellow</option>
+                    <option value="#00FF00">Green</option>
+                    <option value="#0000FF">Blue</option>
+                    <option value="#8000FF">Purple</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn btn-outline" id="cancelZoneBtn">
+                  <i class="fas fa-times"></i>
+                  Cancel
+                </button>
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-save"></i>
+                  Save Zone
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="zones-list">
+            <div class="zones-list-header">
+              <h3>Configured Zones</h3>
+              <div class="zones-actions">
+                <button class="btn btn-outline btn-sm" id="exportZonesBtn">
+                  <i class="fas fa-download"></i>
+                  Export Config
+                </button>
+                <button class="btn btn-outline btn-sm" id="importZonesBtn">
+                  <i class="fas fa-upload"></i>
+                  Import Config
+                </button>
+              </div>
+            </div>
+            <div class="zones-grid" id="zonesGrid">
+              <div class="empty-zones">
+                <i class="fas fa-draw-polygon"></i>
+                <p>No zones configured yet</p>
+                <p>Start by drawing your first detection zone</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Control Beam Tab -->
+      <div class="tab-panel" id="control">
+        <div class="beam-control-container">
+          <div class="zones-header">
+            <h2>Beam <span class="highlight">Control System</span></h2>
+            <p>Monitor and control radiotherapy beam based on patient motion</p>
+          </div>
+
+          <div class="beam-status-section">
+            <div class="status-card">
+              <div class="status-header">
+                <h3><i class="fas fa-radiation"></i> Beam Status</h3>
+                <div class="beam-indicator">
+                  <span class="status-dot" id="statusDot"></span>
+                  <span class="status-text" id="statusText">STOPPED</span>
+                </div>
+              </div>
+              
+              <div class="control-buttons">
+                <button id="startMonitoringBtn" class="btn btn-primary">
+                  <i class="fas fa-play"></i>
+                  Start Monitoring
+                </button>
+                <button id="stopMonitoringBtn" class="btn btn-outline" style="display: none;">
+                  <i class="fas fa-stop"></i>
+                  Stop Monitoring
+                </button>
+                <button id="emergencyStopBtn" class="btn" style="background: var(--error); color: white;">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  Emergency Stop
+                </button>
+                <button class="btn btn-outline" id="processVideoBtn">
+                  <i class="fas fa-cog"></i>
+                  Process Video with Zones
+                </button>
+              </div>
+              
+              <div class="status-info">
+                <div class="status-item">
+                  <span class="label">Current Zone:</span>
+                  <span class="value" id="currentZone">None</span>
+                </div>
+                <div class="status-item">
+                  <span class="label">Active Zones:</span>
+                  <span class="value" id="activeZones">0</span>
+                </div>
+                <div class="status-item">
+                  <span class="label">Detection Active:</span>
+                  <span class="value" id="detectionStatus">No</span>
+                </div>
+                <div class="status-item">
+                  <span class="label">Last Event:</span>
+                  <span class="value" id="lastEvent">None</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="beam-main-area">
+            <div class="video-monitor">
+              <div class="monitor-header">
+                <h3><i class="fas fa-video"></i> Live Video Monitor</h3>
+              </div>
+              <div class="video-container" id="videoContainer">
+                <div class="video-placeholder" id="videoPlaceholder">
+                  <i class="fas fa-video-slash"></i>
+                  <p>No video loaded</p>
+                  <small>Upload a video and configure zones first</small>
+                </div>
+                <video id="processedVideo" controls style="display: none; width: 100%; max-height: 400px;"></video>
+              </div>
+            </div>
+
+            <div class="zone-status-panel">
+              <h3><i class="fas fa-crosshairs"></i> Zone Status</h3>
+              <div class="zones-status-list" id="zonesStatusList">
+                <div class="no-zones-message">
+                  <i class="fas fa-info-circle"></i>
+                  <p>No zones configured</p>
+                  <small>Go to Zone Setup to create detection zones</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="beam-events-section">
+            <div class="live-status">
+              <h3><i class="fas fa-heartbeat"></i> Live Status</h3>
+              <div class="status-grid">
+                <div class="status-item">
+                  <span class="label">Zones Clear:</span>
+                  <span class="value" id="zonesClearStatus">Unknown</span>
+                </div>
+                <div class="status-item">
+                  <span class="label">Beam Active:</span>
+                  <span class="value" id="beamActiveStatus">No</span>
+                </div>
+                <div class="status-item">
+                  <span class="label">Last Event Time:</span>
+                  <span class="value" id="lastEventTime">Never</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="events-log">
+              <div class="events-header">
+                <h3><i class="fas fa-list"></i> Recent Events</h3>
+                <button class="btn btn-sm" id="clearEventsBtn">
+                  <i class="fas fa-trash"></i>
+                  Clear
+                </button>
+              </div>
+              <div class="events-list" id="eventsList">
+                <div class="no-events">No events recorded</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
